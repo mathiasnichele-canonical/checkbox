@@ -1,0 +1,61 @@
+unit: category
+id: video/decoding
+_name: Video/decoding
+
+unit: test plan
+id: node_decoding
+_name: Node decoding
+_description: Jobs to validate video node decoding
+bootstrap_include:
+    get_nodes
+include:
+    video/decoding/setup
+    video/decoding/decode_node_name
+    video/decoding/cleanup
+
+unit: job
+id: video/decoding/setup
+category_id: video/decoding
+depends: com.canonical.certification::va-api/va-initialize
+_summary: Create the video for decoding
+_description:
+   Creates a video on /tmp for decoding
+plugin: shell
+flags: simple
+command:
+    test -s "/tmp/test.mp4" || ffmpeg -v error -f lavfi -i testsrc2=size=1280x720:rate=30 -t 2 \
+        -c:v libx264 -pix_fmt yuv420p "/tmp/test.mp4"
+
+id: get_nodes
+category_id: video/decoding
+_summary: Fetches information of all nodes
+plugin: resource
+command:
+  for node in /dev/dri/renderD*; do
+    test -e "$node" || continue
+    if vainfo --display drm --device "$node" >/dev/null 2>&1; then
+      echo "name: $(basename "$node")"
+      echo "path: $node"
+      echo
+    fi
+  done
+
+unit: template
+template-resource: get_nodes
+template-unit: job
+id: video/decoding/decode_node_{name}
+template-id: video/decoding/decode_node_name
+category_id: video/decoding
+command:
+  ffmpeg -v error -hwaccel vaapi -hwaccel_device "{path}" \
+                -hwaccel_output_format vaapi -i "/tmp/test.mp4" -f null - 2>&1
+_summary: Test video decoding through {name}
+flags: simple
+
+unit: job
+id: video/decoding/cleanup
+category_id: video/decoding
+plugin: shell
+flags: simple
+command: rm -f "/tmp/test.mp4"
+_summary: Remove the temporary decoding video
